@@ -32,6 +32,9 @@ const env = {
   bunnyLibraryId: process.env.BUNNY_STREAM_LIBRARY_ID || "",
   bunnyCdnHost: process.env.BUNNY_STREAM_CDN_HOST || "iframe.mediadelivery.net",
   bunnyPullZone: process.env.BUNNY_STREAM_PULL_ZONE || "",
+  bunnyTokenAuthKey: process.env.BUNNY_TOKEN_AUTH_KEY || "",
+  bunnyApiKey: process.env.BUNNY_API_KEY || "",
+  courseAccessDays: Number(process.env.COURSE_ACCESS_DAYS || 0), // 0 = perpetual
 };
 
 module.exports = { env };

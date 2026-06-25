@@ -7,6 +7,7 @@ const {
   loginUser,
   rotateRefreshToken,
 } = require("../services/auth.service");
+const { prisma } = require("../lib/prisma");
 const { hashToken } = require("../utils/jwt");
 
 const register = asyncHandler(async (req, res) => {

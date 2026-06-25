@@ -58,6 +58,7 @@ model User {
 
 model Course {
   id                String             @id @default(cuid())
+  code              String?            @unique
   title             String
   slug              String             @unique
   description       String             @db.Text
@@ -65,23 +66,82 @@ model Course {
   priceInPaise      Int
   status            CourseStatus       @default(DRAFT)
   shortDescription  String?
+  classId           String?
+  classLabel        String?
+  subject           String?
+  color             String?
+  emoji             String?
+  tagline           String?
+  studentsLabel     String?
+  featuresJson      Json?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+  chapters          Chapter[]
   lessons           Lesson[]
   orders            Order[]
   courseAccess      UserCourseAccess[]
 
   @@index([status])
+  @@index([classId])
+  @@index([classLabel])
+  @@index([subject])
+}
+
+model ClassLevel {
+  id          String   @id @default(cuid())
+  code        String?  @unique
+  name        String   @unique
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([orderIndex])
+}
+
+model Subject {
+  id          String   @id @default(cuid())
+  code        String?  @unique
+  name        String
+  classLabel  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([name, classLabel])
+  @@index([classLabel])
+}
+
+model Chapter {
+  id          String   @id @default(cuid())
+  code        String?  @unique
+  title       String
+  classLabel  String?
+  subject     String?
+  courseId    String?
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  course      Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@index([classLabel])
+  @@index([subject])
+  @@index([courseId])
 }
 
 model Lesson {
   id                String         @id @default(cuid())
   courseId          String
+  code              String?
   title             String
   slug              String
   description       String?        @db.Text
   orderIndex        Int
+  chapterTitle      String?
+  chapterIndex      Int?
   durationSeconds   Int?
+  thumbnailUrl      String?
+  priceInPaise      Int?
+  viewsLabel        String?
+  ratingLabel       String?
   isPreview         Boolean        @default(false)
   bunnyVideoId      String?
   bunnyEmbedUrl     String?
@@ -93,6 +153,7 @@ model Lesson {
   @@unique([courseId, slug])
   @@unique([courseId, orderIndex])
   @@index([courseId])
+  @@index([chapterTitle])
 }
 
 model Order {

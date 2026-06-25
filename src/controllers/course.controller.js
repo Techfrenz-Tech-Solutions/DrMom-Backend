@@ -4,12 +4,18 @@ const {
   listPublishedCourses,
   getPublishedCourseBySlug,
   getLessonPlayback,
+  buildCatalog,
 } = require("../services/course.service");
 const { userHasCourseAccess } = require("../services/access.service");
 
 const listCourses = asyncHandler(async (_req, res) => {
   const courses = await listPublishedCourses();
   res.json({ success: true, courses });
+});
+
+const getCatalog = asyncHandler(async (req, res) => {
+  const catalog = await buildCatalog(req.user?.id);
+  res.json({ success: true, ...catalog });
 });
 
 const getCourse = asyncHandler(async (req, res) => {
@@ -51,6 +57,7 @@ const getLessonPlaybackDetails = asyncHandler(async (req, res) => {
 
 module.exports = {
   listCourses,
+  getCatalog,
   getCourse,
   getLessonAccess,
   getLessonPlaybackDetails,

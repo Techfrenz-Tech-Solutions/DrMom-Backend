@@ -9,7 +9,9 @@ const { notFoundHandler, errorHandler } = require("./middlewares/error");
 
 const app = express();
 
-app.set("trust proxy", 1);
+// Trust only the Nginx reverse proxy running on loopback.
+// Do NOT trust arbitrary X-Forwarded-For headers from the internet.
+app.set("trust proxy", "loopback");
 
 app.use(
   cors({

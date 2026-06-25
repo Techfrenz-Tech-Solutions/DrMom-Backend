@@ -1,5 +1,5 @@
 const express = require("express");
-const { listCourses, getCourse, getLessonAccess, getLessonPlaybackDetails } = require("../controllers/course.controller");
+const { listCourses, getCatalog, getCourse, getLessonAccess, getLessonPlaybackDetails } = require("../controllers/course.controller");
 const { requireAuth, optionalAuth } = require("../middlewares/auth");
 
 const router = express.Router();

@@ -9,7 +9,9 @@ const refreshCookieName = "refreshToken";
 
 const getCookieOptions = (maxAge) => ({
   httpOnly: true,
-  sameSite: "lax",
+  // SameSite=None required for cross-subdomain (api.x.com ↔ app.x.com) on HTTPS.
+  // Fall back to Lax on plain HTTP dev so browsers don't reject the cookie.
+  sameSite: env.cookieSecure ? "none" : "lax",
   secure: env.cookieSecure,
   domain: env.cookieDomain,
   path: "/",

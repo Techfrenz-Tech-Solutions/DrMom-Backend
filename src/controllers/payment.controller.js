@@ -143,6 +143,7 @@ const handleWebhook = asyncHandler(async (req, res) => {
   }
 
   const event = req.body;
+
   if (event.event === "payment.captured") {
     const entity = event.payload?.payment?.entity;
     const razorpayOrderId = entity?.order_id;
@@ -183,6 +184,18 @@ const handleWebhook = asyncHandler(async (req, res) => {
           orderId: order.id,
           tx,
         });
+      });
+    }
+  }
+
+  if (event.event === "payment.failed") {
+    const entity = event.payload?.payment?.entity;
+    const razorpayOrderId = entity?.order_id;
+
+    if (razorpayOrderId) {
+      await prisma.order.updateMany({
+        where: { razorpayOrderId, status: "CREATED" },
+        data: { status: "FAILED" },
       });
     }
   }
