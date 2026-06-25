@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  CREATED
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  CREATED
+  VERIFIED
+  FAILED
+  REFUNDED
+}
+
+enum AccessSource {
+  PURCHASE
+  MANUAL
+  PROMOTIONAL
+}
+
+model User {
+  id              String             @id @default(cuid())
+  name            String
+  email           String             @unique
+  passwordHash    String
+  role            UserRole           @default(USER)
+  phone           String?
+  gradeLabel      String?
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  orders          Order[]
+  courseAccess    UserCourseAccess[]
+  videoProgress   VideoProgress[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]         @relation("AuditActor")
+}
+
+model Course {
+  id                String             @id @default(cuid())
+  title             String
+  slug              String             @unique
+  description       String             @db.Text
+  thumbnailUrl      String?
+  priceInPaise      Int
+  status            CourseStatus       @default(DRAFT)
+  shortDescription  String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  lessons           Lesson[]
+  orders            Order[]
+  courseAccess      UserCourseAccess[]
+
+  @@index([status])
+}
+
+model Lesson {
+  id                String         @id @default(cuid())
+  courseId          String
+  title             String
+  slug              String
+  description       String?        @db.Text
+  orderIndex        Int
+  durationSeconds   Int?
+  isPreview         Boolean        @default(false)
+  bunnyVideoId      String?
+  bunnyEmbedUrl     String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  course            Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  videoProgress     VideoProgress[]
+
+  @@unique([courseId, slug])
+  @@unique([courseId, orderIndex])
+  @@index([courseId])
+}
+
+model Order {
+  id                     String         @id @default(cuid())
+  userId                 String
+  courseId               String
+  razorpayOrderId        String         @unique
+  razorpayPaymentId      String?        @unique
+  amountInPaise          Int
+  currency               String         @default("INR")
+  status                 OrderStatus    @default(CREATED)
+  receipt                String?        @unique
+  notesJson              Json?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  user                   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course                 Course         @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  payments               Payment[]
+
+  @@index([userId])
+  @@index([courseId])
+}
+
+model Payment {
+  id                        String          @id @default(cuid())
+  orderId                   String
+  razorpayPaymentId         String?         @unique
+  razorpaySignature         String?
+  razorpayWebhookEventId    String?         @unique
+  status                    PaymentStatus   @default(CREATED)
+  amountInPaise             Int
+  currency                  String          @default("INR")
+  method                    String?
+  payloadJson               Json?
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+  order                     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model UserCourseAccess {
+  id              String        @id @default(cuid())
+  userId          String
+  courseId        String
+  source          AccessSource  @default(PURCHASE)
+  grantedByUserId String?
+  orderId         String?
+  grantedAt       DateTime      @default(now())
+  expiresAt       DateTime?
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course          Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+}
+
+model VideoProgress {
+  id                String      @id @default(cuid())
+  userId            String
+  lessonId          String
+  watchedSeconds    Int         @default(0)
+  completed         Boolean     @default(false)
+  lastWatchedAt     DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson            Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+}
+
+model RefreshToken {
+  id            String      @id @default(cuid())
+  userId        String
+  tokenHash     String      @unique
+  expiresAt     DateTime
+  createdAt     DateTime    @default(now())
+  revokedAt     DateTime?
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id            String      @id @default(cuid())
+  actorUserId   String?
+  action        String
+  entityType    String
+  entityId      String
+  metadataJson  Json?
+  createdAt     DateTime    @default(now())
+  actor         User?       @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
