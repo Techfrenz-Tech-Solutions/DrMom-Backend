@@ -1,6 +1,6 @@
 const { prisma } = require("../lib/prisma");
 const { userHasCourseAccess } = require("./access.service");
-const { getPlaybackPayload } = require("../utils/bunny");
+const { getPlaybackPayload, signBunnyPullZoneUrl } = require("../utils/bunny");
 const { AppError } = require("../utils/http");
 
 const publicCourseSelect = {
@@ -67,8 +67,8 @@ const serializeLesson = (lesson, hasAccess = false) => ({
   chapterIndex: lesson.chapterIndex || 1,
   durationSeconds: lesson.durationSeconds,
   duration: formatDuration(lesson.durationSeconds),
-  thumbnail: lesson.thumbnailUrl,
-  thumbnailUrl: lesson.thumbnailUrl,
+  thumbnail: signBunnyPullZoneUrl(lesson.thumbnailUrl),
+  thumbnailUrl: signBunnyPullZoneUrl(lesson.thumbnailUrl),
   priceInPaise: lesson.priceInPaise,
   price: lesson.priceInPaise ? rupees(lesson.priceInPaise) : undefined,
   views: lesson.viewsLabel || "",

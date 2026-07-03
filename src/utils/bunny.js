@@ -16,6 +16,35 @@ const signBunnyUrl = (videoId, baseUrl) => {
   return `${baseUrl}${sep}token=${token}&expires=${expires}`;
 };
 
+// Bunny pull-zone Token Authentication (different scheme from Stream embed auth):
+// token = base64url(sha256(securityKey + urlPath + expires))
+// Docs: https://docs.bunny.net/docs/cdn-token-authentication
+const signBunnyPullZoneUrl = (rawUrl) => {
+  if (!env.bunnyTokenAuthKey || !rawUrl) return rawUrl;
+
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+
+  if (!url.hostname.endsWith(".b-cdn.net")) return rawUrl;
+
+  const expires = Math.floor(Date.now() / 1000) + 3600; // 1-hour window
+  const hash = crypto
+    .createHash("sha256")
+    .update(`${env.bunnyTokenAuthKey}${url.pathname}${expires}`)
+    .digest("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+
+  url.searchParams.set("token", hash);
+  url.searchParams.set("expires", String(expires));
+  return url.toString();
+};
+
 const buildBunnyEmbedUrl = (lesson) => {
   const raw = lesson.bunnyEmbedUrl
     || (lesson.bunnyVideoId && env.bunnyLibraryId
@@ -32,4 +61,4 @@ const getPlaybackPayload = (lesson) => ({
   embedUrl: buildBunnyEmbedUrl(lesson),
 });
 
-module.exports = { buildBunnyEmbedUrl, getPlaybackPayload };
+module.exports = { buildBunnyEmbedUrl, getPlaybackPayload, signBunnyPullZoneUrl };
