@@ -21,4 +21,15 @@ const loginSchema = z.object({
   query: z.object({}).optional(),
 });
 
-module.exports = { registerSchema, loginSchema };
+const completeGoogleSignupSchema = z.object({
+  body: z.object({
+    pendingToken: z.string().min(1),
+    name: z.string().trim().min(2).max(100),
+    gradeLabel: z.string().trim().max(50).optional(),
+    phone: z.string().trim().max(30).optional(),
+  }),
+  params: z.object({}).optional(),
+  query: z.object({}).optional(),
+});
+
+module.exports = { registerSchema, loginSchema, completeGoogleSignupSchema };

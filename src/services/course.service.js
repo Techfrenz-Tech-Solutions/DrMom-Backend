@@ -1,6 +1,7 @@
 const { prisma } = require("../lib/prisma");
 const { userHasCourseAccess } = require("./access.service");
 const { getPlaybackPayload, signBunnyPullZoneUrl } = require("../utils/bunny");
+const { signStorageUrl, isSignedDeliveryConfigured } = require("../utils/bunnyStorage");
 const { AppError } = require("../utils/http");
 
 const publicCourseSelect = {
@@ -255,9 +256,47 @@ const getLessonPlayback = async ({ lessonId, userId }) => {
   };
 };
 
+// Chapter PDF/notes material — gated the same way lesson video playback is:
+// require ownership of the parent course before ever touching Bunny Storage.
+const getChapterPdfMaterial = async ({ chapterId, userId }) => {
+  const chapter = await prisma.chapter.findUnique({ where: { id: chapterId } });
+  if (!chapter) throw new AppError(404, "Chapter not found");
+  if (!chapter.pdfStoragePath) throw new AppError(404, "This chapter has no PDF/notes material");
+
+  // A chapter with no parent course has no purchase record to check access
+  // against under the current access model — deny by default rather than
+  // guessing an access rule. See report: TODO — clarify intended behavior
+  // for standalone (courseless) chapters if that's a real use case.
+  if (!chapter.courseId) {
+    throw new AppError(403, "This material is not available for access");
+  }
+
+  const hasAccess = await userHasCourseAccess({ userId, courseId: chapter.courseId });
+  if (!hasAccess) {
+    throw new AppError(403, "Purchase required to access this material");
+  }
+
+  if (!isSignedDeliveryConfigured()) {
+    throw new AppError(503, "Material delivery is not configured on this server");
+  }
+
+  const ttlSeconds = 300;
+  const url = signStorageUrl(chapter.pdfStoragePath, ttlSeconds);
+
+  return {
+    chapterId: chapter.id,
+    fileName: chapter.pdfFileName || null,
+    mimeType: chapter.pdfMimeType || null,
+    size: chapter.pdfSize || null,
+    url,
+    expiresIn: ttlSeconds,
+  };
+};
+
 module.exports = {
   listPublishedCourses,
   getPublishedCourseBySlug,
   getLessonPlayback,
+  getChapterPdfMaterial,
   buildCatalog,
 };

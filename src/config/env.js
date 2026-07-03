@@ -17,6 +17,7 @@ const env = {
     process.env.CORS_ORIGIN ||
       [process.env.FRONTEND_URL, process.env.ADMIN_FRONTEND_URL].filter(Boolean).join(","),
   ),
+  frontendUrl: process.env.FRONTEND_URL || "",
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET || "",
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || "",
   accessTokenTtl: process.env.ACCESS_TOKEN_TTL || "15m",
@@ -35,6 +36,18 @@ const env = {
   bunnyTokenAuthKey: process.env.BUNNY_TOKEN_AUTH_KEY || "",
   bunnyApiKey: process.env.BUNNY_API_KEY || "",
   courseAccessDays: Number(process.env.COURSE_ACCESS_DAYS || 0), // 0 = perpetual
+  googleClientId: process.env.GOOGLE_CLIENT_ID || "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+  googleCallbackUrl: process.env.GOOGLE_CALLBACK_URL || "",
+  // Bunny Storage — for PDF/notes files only. Deliberately separate from the
+  // Bunny Stream vars above; do not reuse Stream credentials here.
+  bunnyStorageZoneName: process.env.BUNNY_STORAGE_ZONE_NAME || "",
+  bunnyStorageAccessKey: process.env.BUNNY_STORAGE_ACCESS_KEY || "",
+  bunnyStorageEndpoint: process.env.BUNNY_STORAGE_ENDPOINT || "https://storage.bunnycdn.com",
+  bunnyStoragePullZoneUrl: process.env.BUNNY_STORAGE_PULL_ZONE_URL || "",
+  bunnyStorageUploadFolder: process.env.BUNNY_STORAGE_UPLOAD_FOLDER || "chapters",
+  bunnyStorageSigningKey: process.env.BUNNY_STORAGE_SIGNING_KEY || "",
+  bunnyStoragePrivateAccess: String(process.env.BUNNY_STORAGE_PRIVATE_ACCESS ?? "true") === "true",
 };
 
 module.exports = { env };

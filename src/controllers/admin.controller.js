@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const { prisma } = require("../lib/prisma");
 const { asyncHandler, AppError } = require("../utils/http");
 const { slugify } = require("../utils/slugify");
+const { signStorageUrl } = require("../utils/bunnyStorage");
 
 const selectUser = {
   id: true,
@@ -36,6 +37,22 @@ const buildUniqueCourseSlug = async (title, ignoreCourseId) => {
     counter += 1;
     slug = `${base}-${counter}`;
   }
+};
+
+// Chapters.jsx reads the quiz back as `assessments`; the DB column is
+// `assessmentsJson` (Prisma Json). Alias it on the way out.
+// pdfStoragePath (internal Bunny path, never public) is aliased back to the
+// `pdfUrl` field name Chapters.jsx already expects — the value is an opaque
+// storage reference, not a clickable link. `pdfPreviewUrl` is a separate,
+// short-lived signed URL admins can optionally use to preview the file.
+const serializeChapter = (chapter) => {
+  const { pdfStoragePath, assessmentsJson, ...rest } = chapter;
+  return {
+    ...rest,
+    pdfUrl: pdfStoragePath || null,
+    pdfPreviewUrl: pdfStoragePath ? signStorageUrl(pdfStoragePath, 300) : null,
+    assessments: assessmentsJson || [],
+  };
 };
 
 const buildUniqueLessonSlug = async (courseId, title, ignoreLessonId) => {
@@ -87,7 +104,7 @@ const listAdminCatalog = asyncHandler(async (_req, res) => {
     }),
   ]);
 
-  res.json({ success: true, classes, subjects, chapters, courses });
+  res.json({ success: true, classes, subjects, chapters: chapters.map(serializeChapter), courses });
 });
 
 const getDashboard = asyncHandler(async (_req, res) => {
@@ -326,11 +343,17 @@ const createChapter = asyncHandler(async (req, res) => {
       subject: payload.subject || null,
       courseId: payload.courseId || null,
       orderIndex: payload.orderIndex ?? 0,
+      videoUrl: payload.videoUrl || null,
+      pdfStoragePath: payload.pdfUrl || null,
+      pdfFileName: payload.pdfFileName || null,
+      pdfMimeType: payload.pdfMimeType || null,
+      pdfSize: payload.pdfSize ?? null,
+      assessmentsJson: payload.assessments || undefined,
     },
     include: { course: { select: { id: true, title: true } } },
   });
 
-  res.status(201).json({ success: true, chapter });
+  res.status(201).json({ success: true, chapter: serializeChapter(chapter) });
 });
 
 const updateChapter = asyncHandler(async (req, res) => {
@@ -347,6 +370,12 @@ const updateChapter = asyncHandler(async (req, res) => {
       subject: payload.subject || null,
       courseId: payload.courseId || null,
       orderIndex: payload.orderIndex ?? existing.orderIndex,
+      videoUrl: payload.videoUrl !== undefined ? (payload.videoUrl || null) : existing.videoUrl,
+      pdfStoragePath: payload.pdfUrl !== undefined ? (payload.pdfUrl || null) : existing.pdfStoragePath,
+      pdfFileName: payload.pdfFileName !== undefined ? (payload.pdfFileName || null) : existing.pdfFileName,
+      pdfMimeType: payload.pdfMimeType !== undefined ? (payload.pdfMimeType || null) : existing.pdfMimeType,
+      pdfSize: payload.pdfSize !== undefined ? payload.pdfSize : existing.pdfSize,
+      assessmentsJson: payload.assessments !== undefined ? payload.assessments : existing.assessmentsJson,
     },
     include: { course: { select: { id: true, title: true } } },
   });
@@ -358,7 +387,7 @@ const updateChapter = asyncHandler(async (req, res) => {
     });
   }
 
-  res.json({ success: true, chapter });
+  res.json({ success: true, chapter: serializeChapter(chapter) });
 });
 
 const deleteChapter = asyncHandler(async (req, res) => {
@@ -457,6 +486,61 @@ const updateLessonPrice = asyncHandler(async (req, res) => {
     data: { priceInPaise: req.validated.body.priceInPaise },
   });
   res.json({ success: true, lesson });
+});
+
+const deleteCoursePrice = asyncHandler(async (req, res) => {
+  const existing = await prisma.course.findUnique({ where: { id: req.params.courseId } });
+  if (!existing) throw new AppError(404, "Course not found");
+
+  const course = await prisma.course.update({
+    where: { id: req.params.courseId },
+    data: { priceInPaise: 0 },
+  });
+  res.json({ success: true, course });
+});
+
+const deleteLessonPrice = asyncHandler(async (req, res) => {
+  const existing = await prisma.lesson.findUnique({ where: { id: req.params.lessonId } });
+  if (!existing) throw new AppError(404, "Lesson not found");
+
+  const lesson = await prisma.lesson.update({
+    where: { id: req.params.lessonId },
+    data: { priceInPaise: null },
+  });
+  res.json({ success: true, lesson });
+});
+
+const updateChapterPrice = asyncHandler(async (req, res) => {
+  const existing = await prisma.chapter.findUnique({ where: { id: req.params.chapterId } });
+  if (!existing) throw new AppError(404, "Chapter not found");
+
+  const chapter = await prisma.chapter.update({
+    where: { id: req.params.chapterId },
+    data: { priceInPaise: req.validated.body.priceInPaise },
+  });
+  res.json({ success: true, chapter });
+});
+
+const updateClassPrice = asyncHandler(async (req, res) => {
+  const { className, priceInPaise } = req.validated.body;
+  const existing = await prisma.classLevel.findUnique({ where: { name: className } });
+  if (!existing) throw new AppError(404, "Class not found");
+
+  const classLevel = await prisma.classLevel.update({
+    where: { name: className },
+    data: { priceInPaise },
+  });
+  res.json({ success: true, classLevel });
+});
+
+const updateSubjectPrice = asyncHandler(async (req, res) => {
+  const { subjectName, priceInPaise } = req.validated.body;
+  const existing = await prisma.subject.findFirst({ where: { name: subjectName } });
+  if (!existing) throw new AppError(404, "Subject not found");
+
+  await prisma.subject.updateMany({ where: { name: subjectName }, data: { priceInPaise } });
+  const subject = await prisma.subject.findFirst({ where: { name: subjectName } });
+  res.json({ success: true, subject });
 });
 
 const listUsers = asyncHandler(async (_req, res) => {
@@ -604,6 +688,11 @@ module.exports = {
   deleteLesson,
   updateCoursePrice,
   updateLessonPrice,
+  deleteCoursePrice,
+  deleteLessonPrice,
+  updateChapterPrice,
+  updateClassPrice,
+  updateSubjectPrice,
   listUsers,
   createUser,
   updateUser,

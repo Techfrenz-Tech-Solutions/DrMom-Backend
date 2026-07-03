@@ -54,6 +54,24 @@ model User {
   videoProgress   VideoProgress[]
   refreshTokens   RefreshToken[]
   auditLogs       AuditLog[]         @relation("AuditActor")
+  identities      UserIdentity[]
+}
+
+// External sign-in providers (Google, etc.) linked to a User.
+// A user can exist without any identity (password-only) or with one+ linked providers.
+model UserIdentity {
+  id              String   @id @default(cuid())
+  userId          String
+  provider        String   // e.g. "google"
+  providerUserId  String   // provider's stable subject/user id
+  email           String
+  emailVerified   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
 }
 
 model Course {
@@ -88,39 +106,50 @@ model Course {
 }
 
 model ClassLevel {
-  id          String   @id @default(cuid())
-  code        String?  @unique
-  name        String   @unique
-  orderIndex  Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  code          String?  @unique
+  name          String   @unique
+  orderIndex    Int      @default(0)
+  priceInPaise  Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([orderIndex])
 }
 
 model Subject {
-  id          String   @id @default(cuid())
-  code        String?  @unique
-  name        String
-  classLabel  String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  code          String?  @unique
+  name          String
+  classLabel    String?
+  priceInPaise  Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@unique([name, classLabel])
   @@index([classLabel])
 }
 
 model Chapter {
-  id          String   @id @default(cuid())
-  code        String?  @unique
-  title       String
-  classLabel  String?
-  subject     String?
-  courseId    String?
-  orderIndex  Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  course      Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  id              String   @id @default(cuid())
+  code            String?  @unique
+  title           String
+  classLabel      String?
+  subject         String?
+  courseId        String?
+  orderIndex      Int      @default(0)
+  videoUrl        String?
+  // Internal Bunny Storage path/key — never a public URL. Access is brokered
+  // through a short-lived signed URL, gated by course purchase/enrollment.
+  pdfStoragePath  String?
+  pdfFileName     String?
+  pdfMimeType     String?
+  pdfSize         Int?
+  assessmentsJson Json?
+  priceInPaise    Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  course          Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
 
   @@index([classLabel])
   @@index([subject])
