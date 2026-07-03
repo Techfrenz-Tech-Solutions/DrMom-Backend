@@ -95,11 +95,16 @@ const adminAssessmentSchema = z
 // frontend always sends the complete current list on save (add/replace/
 // delete are all resolved client-side into "here is the final array"), so
 // each array is full-replace semantics, not a patch.
+// .nullable() alongside .optional() because these values can genuinely be
+// null — e.g. video/material items backfilled from the old singular
+// columns (migration 0006) have title/bunnyVideoId set to NULL in the DB,
+// and that null round-trips straight through serializeChapter back into
+// the edit form and then back into this payload on save.
 const adminVideoItemSchema = z.object({
   id: z.string().trim().min(1).max(100),
   embedUrl: z.string().trim().url().max(2000),
-  bunnyVideoId: z.string().trim().max(200).optional().or(z.literal("")),
-  title: z.string().trim().max(200).optional().or(z.literal("")),
+  bunnyVideoId: z.string().trim().max(200).nullable().optional().or(z.literal("")),
+  title: z.string().trim().max(200).nullable().optional().or(z.literal("")),
 });
 
 // storagePath is an internal Bunny Storage path/key (e.g.
@@ -108,9 +113,9 @@ const adminVideoItemSchema = z.object({
 const adminMaterialItemSchema = z.object({
   id: z.string().trim().min(1).max(100),
   storagePath: z.string().trim().min(1).max(500),
-  fileName: z.string().trim().max(300).optional().or(z.literal("")),
-  mimeType: z.string().trim().max(150).optional().or(z.literal("")),
-  size: z.number().int().min(0).optional(),
+  fileName: z.string().trim().max(300).nullable().optional().or(z.literal("")),
+  mimeType: z.string().trim().max(150).nullable().optional().or(z.literal("")),
+  size: z.number().int().min(0).nullable().optional(),
 });
 
 const adminChapterSchema = z.object({
