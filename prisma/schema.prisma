@@ -138,13 +138,15 @@ model Chapter {
   subject         String?
   courseId        String?
   orderIndex      Int      @default(0)
-  videoUrl        String?
-  // Internal Bunny Storage path/key — never a public URL. Access is brokered
-  // through a short-lived signed URL, gated by course purchase/enrollment.
-  pdfStoragePath  String?
-  pdfFileName     String?
-  pdfMimeType     String?
-  pdfSize         Int?
+  // Multiple videos per chapter: [{ id, embedUrl, bunnyVideoId, title }].
+  // embedUrl is a signed Bunny Stream URL (already viewable directly).
+  videosJson      Json?
+  // Multiple PDF/notes files per chapter:
+  // [{ id, storagePath, fileName, mimeType, size }]. storagePath is an
+  // internal Bunny Storage path/key — never a public URL. Access is
+  // brokered through a short-lived signed URL, gated by course
+  // purchase/enrollment.
+  materialsJson   Json?
   assessmentsJson Json?
   priceInPaise    Int?
   createdAt       DateTime @default(now())

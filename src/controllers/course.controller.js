@@ -4,7 +4,7 @@ const {
   listPublishedCourses,
   getPublishedCourseBySlug,
   getLessonPlayback,
-  getChapterPdfMaterial,
+  getChapterMaterials,
   buildCatalog,
 } = require("../services/course.service");
 const { userHasCourseAccess } = require("../services/access.service");
@@ -56,10 +56,10 @@ const getLessonPlaybackDetails = asyncHandler(async (req, res) => {
   res.json({ success: true, playback });
 });
 
-const getChapterPdfMaterialDetails = asyncHandler(async (req, res) => {
+const getChapterMaterialsDetails = asyncHandler(async (req, res) => {
   if (!req.user) throw new AppError(401, "Authentication required");
-  const material = await getChapterPdfMaterial({ chapterId: req.params.chapterId, userId: req.user.id });
-  res.json({ success: true, material });
+  const data = await getChapterMaterials({ chapterId: req.params.chapterId, userId: req.user.id });
+  res.json({ success: true, ...data });
 });
 
 module.exports = {
@@ -68,5 +68,5 @@ module.exports = {
   getCourse,
   getLessonAccess,
   getLessonPlaybackDetails,
-  getChapterPdfMaterialDetails,
+  getChapterMaterialsDetails,
 };

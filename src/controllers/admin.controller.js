@@ -40,17 +40,20 @@ const buildUniqueCourseSlug = async (title, ignoreCourseId) => {
 };
 
 // Chapters.jsx reads the quiz back as `assessments`; the DB column is
-// `assessmentsJson` (Prisma Json). Alias it on the way out.
-// pdfStoragePath (internal Bunny path, never public) is aliased back to the
-// `pdfUrl` field name Chapters.jsx already expects — the value is an opaque
-// storage reference, not a clickable link. `pdfPreviewUrl` is a separate,
-// short-lived signed URL admins can optionally use to preview the file.
+// `assessmentsJson` (Prisma Json). Alias it on the way out. Same idea for
+// `videos`/`materials` <-> videosJson/materialsJson — each material gets a
+// fresh short-lived signed `previewUrl` computed on every read rather than
+// stored, since a stored one would go stale.
 const serializeChapter = (chapter) => {
-  const { pdfStoragePath, assessmentsJson, ...rest } = chapter;
+  const { videosJson, materialsJson, assessmentsJson, ...rest } = chapter;
+  const materials = (materialsJson || []).map((m) => ({
+    ...m,
+    previewUrl: m.storagePath ? signStorageUrl(m.storagePath, 300) : null,
+  }));
   return {
     ...rest,
-    pdfUrl: pdfStoragePath || null,
-    pdfPreviewUrl: pdfStoragePath ? signStorageUrl(pdfStoragePath, 300) : null,
+    videos: videosJson || [],
+    materials,
     assessments: assessmentsJson || [],
   };
 };
@@ -343,11 +346,8 @@ const createChapter = asyncHandler(async (req, res) => {
       subject: payload.subject || null,
       courseId: payload.courseId || null,
       orderIndex: payload.orderIndex ?? 0,
-      videoUrl: payload.videoUrl || null,
-      pdfStoragePath: payload.pdfUrl || null,
-      pdfFileName: payload.pdfFileName || null,
-      pdfMimeType: payload.pdfMimeType || null,
-      pdfSize: payload.pdfSize ?? null,
+      videosJson: payload.videos || [],
+      materialsJson: payload.materials || [],
       assessmentsJson: payload.assessments || undefined,
     },
     include: { course: { select: { id: true, title: true } } },
@@ -370,11 +370,12 @@ const updateChapter = asyncHandler(async (req, res) => {
       subject: payload.subject || null,
       courseId: payload.courseId || null,
       orderIndex: payload.orderIndex ?? existing.orderIndex,
-      videoUrl: payload.videoUrl !== undefined ? (payload.videoUrl || null) : existing.videoUrl,
-      pdfStoragePath: payload.pdfUrl !== undefined ? (payload.pdfUrl || null) : existing.pdfStoragePath,
-      pdfFileName: payload.pdfFileName !== undefined ? (payload.pdfFileName || null) : existing.pdfFileName,
-      pdfMimeType: payload.pdfMimeType !== undefined ? (payload.pdfMimeType || null) : existing.pdfMimeType,
-      pdfSize: payload.pdfSize !== undefined ? payload.pdfSize : existing.pdfSize,
+      // Full-replace semantics: the frontend always sends the complete
+      // current list (adds/replaces/deletes already resolved client-side),
+      // so an explicit [] means "admin cleared them all", while an absent
+      // key (non-UI API callers) preserves whatever was already there.
+      videosJson: payload.videos !== undefined ? payload.videos : existing.videosJson,
+      materialsJson: payload.materials !== undefined ? payload.materials : existing.materialsJson,
       assessmentsJson: payload.assessments !== undefined ? payload.assessments : existing.assessmentsJson,
     },
     include: { course: { select: { id: true, title: true } } },

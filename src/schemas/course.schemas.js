@@ -91,10 +91,28 @@ const adminAssessmentSchema = z
     path: ["answer"],
   });
 
-// pdfUrl is kept as the field name for frontend/API compatibility with
-// Chapters.jsx, but the value is now an internal Bunny Storage path/key
-// (e.g. "chapters/<id>/<uuid>.pdf"), never a public URL — so it's validated
-// as a plain bounded string, not z.string().url().
+// A chapter can now carry multiple videos and multiple PDF/notes files. The
+// frontend always sends the complete current list on save (add/replace/
+// delete are all resolved client-side into "here is the final array"), so
+// each array is full-replace semantics, not a patch.
+const adminVideoItemSchema = z.object({
+  id: z.string().trim().min(1).max(100),
+  embedUrl: z.string().trim().url().max(2000),
+  bunnyVideoId: z.string().trim().max(200).optional().or(z.literal("")),
+  title: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+// storagePath is an internal Bunny Storage path/key (e.g.
+// "chapters/<id>/<uuid>.pdf"), never a public URL — validated as a plain
+// bounded string, not z.string().url().
+const adminMaterialItemSchema = z.object({
+  id: z.string().trim().min(1).max(100),
+  storagePath: z.string().trim().min(1).max(500),
+  fileName: z.string().trim().max(300).optional().or(z.literal("")),
+  mimeType: z.string().trim().max(150).optional().or(z.literal("")),
+  size: z.number().int().min(0).optional(),
+});
+
 const adminChapterSchema = z.object({
   params: z.object({ chapterId: z.string().optional() }).optional(),
   query: z.object({}).optional(),
@@ -105,11 +123,8 @@ const adminChapterSchema = z.object({
     subject: z.string().trim().max(120).optional().or(z.literal("")),
     courseId: z.string().trim().optional().or(z.literal("")),
     orderIndex: z.number().int().min(0).optional(),
-    videoUrl: z.string().trim().url().max(2000).optional().or(z.literal("")),
-    pdfUrl: z.string().trim().max(500).optional().or(z.literal("")),
-    pdfFileName: z.string().trim().max(300).optional().or(z.literal("")),
-    pdfMimeType: z.string().trim().max(150).optional().or(z.literal("")),
-    pdfSize: z.number().int().min(0).optional(),
+    videos: z.array(adminVideoItemSchema).max(50).optional(),
+    materials: z.array(adminMaterialItemSchema).max(50).optional(),
     assessments: z.array(adminAssessmentSchema).max(50).optional(),
   }),
 });

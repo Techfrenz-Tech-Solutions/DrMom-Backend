@@ -256,12 +256,15 @@ const getLessonPlayback = async ({ lessonId, userId }) => {
   };
 };
 
-// Chapter PDF/notes material — gated the same way lesson video playback is:
+// Chapter PDF/notes materials — gated the same way lesson video playback is:
 // require ownership of the parent course before ever touching Bunny Storage.
-const getChapterPdfMaterial = async ({ chapterId, userId }) => {
+// A chapter can now carry multiple materials; returns all of them signed.
+const getChapterMaterials = async ({ chapterId, userId }) => {
   const chapter = await prisma.chapter.findUnique({ where: { id: chapterId } });
   if (!chapter) throw new AppError(404, "Chapter not found");
-  if (!chapter.pdfStoragePath) throw new AppError(404, "This chapter has no PDF/notes material");
+
+  const materials = chapter.materialsJson || [];
+  if (!materials.length) throw new AppError(404, "This chapter has no PDF/notes material");
 
   // A chapter with no parent course has no purchase record to check access
   // against under the current access model — deny by default rather than
@@ -281,15 +284,16 @@ const getChapterPdfMaterial = async ({ chapterId, userId }) => {
   }
 
   const ttlSeconds = 300;
-  const url = signStorageUrl(chapter.pdfStoragePath, ttlSeconds);
-
   return {
     chapterId: chapter.id,
-    fileName: chapter.pdfFileName || null,
-    mimeType: chapter.pdfMimeType || null,
-    size: chapter.pdfSize || null,
-    url,
-    expiresIn: ttlSeconds,
+    materials: materials.map((m) => ({
+      id: m.id,
+      fileName: m.fileName || null,
+      mimeType: m.mimeType || null,
+      size: m.size || null,
+      url: signStorageUrl(m.storagePath, ttlSeconds),
+      expiresIn: ttlSeconds,
+    })),
   };
 };
 
@@ -297,6 +301,6 @@ module.exports = {
   listPublishedCourses,
   getPublishedCourseBySlug,
   getLessonPlayback,
-  getChapterPdfMaterial,
+  getChapterMaterials,
   buildCatalog,
 };
