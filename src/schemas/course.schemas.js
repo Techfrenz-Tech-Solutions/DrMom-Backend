@@ -100,11 +100,15 @@ const adminAssessmentSchema = z
 // columns (migration 0006) have title/bunnyVideoId set to NULL in the DB,
 // and that null round-trips straight through serializeChapter back into
 // the edit form and then back into this payload on save.
+// isPreview marks a video as free-to-watch without purchase — same meaning
+// as the old Lesson.isPreview flag, now living per-video-item since a
+// chapter's videos are otherwise all gated together by the chapter's course.
 const adminVideoItemSchema = z.object({
   id: z.string().trim().min(1).max(100),
   embedUrl: z.string().trim().url().max(2000),
   bunnyVideoId: z.string().trim().max(200).nullable().optional().or(z.literal("")),
   title: z.string().trim().max(200).nullable().optional().or(z.literal("")),
+  isPreview: z.boolean().nullable().optional(),
 });
 
 // storagePath is an internal Bunny Storage path/key (e.g.

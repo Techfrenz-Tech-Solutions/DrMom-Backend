@@ -1,9 +1,15 @@
 const { prisma } = require("../lib/prisma");
 const { userHasCourseAccess } = require("./access.service");
-const { getPlaybackPayload, signBunnyPullZoneUrl } = require("../utils/bunny");
+const { getPlaybackPayload, buildBunnyEmbedUrl, signBunnyPullZoneUrl } = require("../utils/bunny");
 const { signStorageUrl, isSignedDeliveryConfigured } = require("../utils/bunnyStorage");
+const { env } = require("../config/env");
 const { AppError } = require("../utils/http");
 
+// The platform hierarchy is Class -> Subject -> Course -> Chapter. Public
+// video content is read from Chapter.videosJson (a chapter can hold several
+// videos) rather than the old Lesson table — see serializeChapterVideos
+// below. Lesson/getLessonPlayback are kept for backward compatibility only;
+// see the comment above getLessonPlayback for why.
 const publicCourseSelect = {
   id: true,
   code: true,
@@ -24,59 +30,55 @@ const publicCourseSelect = {
   featuresJson: true,
   createdAt: true,
   updatedAt: true,
-  lessons: {
+  chapters: {
     orderBy: { orderIndex: "asc" },
     select: {
       id: true,
       code: true,
       title: true,
-      slug: true,
-      description: true,
       orderIndex: true,
-      chapterTitle: true,
-      chapterIndex: true,
-      durationSeconds: true,
-      thumbnailUrl: true,
+      videosJson: true,
       priceInPaise: true,
-      viewsLabel: true,
-      ratingLabel: true,
-      isPreview: true,
-      bunnyVideoId: true,
-      bunnyEmbedUrl: true,
     },
   },
 };
 
-const formatDuration = (durationSeconds) => {
-  if (!durationSeconds) return "";
-  const minutes = Math.floor(durationSeconds / 60);
-  const seconds = String(durationSeconds % 60).padStart(2, "0");
-  return `${minutes}:${seconds}`;
-};
-
 const rupees = (paise) => `₹${Math.round((paise || 0) / 100)}`;
 
-const serializeLesson = (lesson, hasAccess = false) => ({
-  id: lesson.id,
-  code: lesson.code,
-  title: lesson.title,
-  slug: lesson.slug,
-  description: lesson.description,
-  desc: lesson.description || "",
-  orderIndex: lesson.orderIndex,
-  chapter: lesson.chapterTitle || "Chapter 1",
-  chapterIndex: lesson.chapterIndex || 1,
-  durationSeconds: lesson.durationSeconds,
-  duration: formatDuration(lesson.durationSeconds),
-  thumbnail: signBunnyPullZoneUrl(lesson.thumbnailUrl),
-  thumbnailUrl: signBunnyPullZoneUrl(lesson.thumbnailUrl),
-  priceInPaise: lesson.priceInPaise,
-  price: lesson.priceInPaise ? rupees(lesson.priceInPaise) : undefined,
-  views: lesson.viewsLabel || "",
-  rating: lesson.ratingLabel || "",
-  isPreview: lesson.isPreview,
-  isLocked: !lesson.isPreview && !hasAccess,
-});
+// Bunny Stream auto-generates a thumbnail per video at this path on the
+// Stream pull zone — same derivation the old per-Lesson thumbnailUrl relied
+// on, just computed on the fly instead of stored, since a chapter can now
+// have many videos and storing one URL per item would go stale the same way
+// a stored signed URL would.
+const buildVideoThumbnailUrl = (bunnyVideoId) => {
+  if (!bunnyVideoId || !env.bunnyPullZone) return null;
+  return signBunnyPullZoneUrl(`https://${env.bunnyPullZone}.b-cdn.net/${bunnyVideoId}/thumbnail.jpg`);
+};
+
+// Flattens a chapter's videosJson array into the same "video card" shape
+// the website already expects (previously produced from Lesson rows) — see
+// VideoCard.jsx / VideoContent.jsx, which are unchanged by this switch.
+// Price is per-chapter now (chapter.priceInPaise), not per-video — the old
+// per-Lesson price was finer-grained than the Class/Subject/Course/Chapter
+// pricing hierarchy the rest of the platform uses.
+const serializeChapterVideos = (course, chapter, hasAccess = false) => {
+  const videos = Array.isArray(chapter.videosJson) ? chapter.videosJson : [];
+  return videos.map((video) => ({
+    id: video.id,
+    chapterId: chapter.id,
+    courseId: course.id,
+    title: video.title || chapter.title,
+    desc: chapter.title,
+    chapter: chapter.title,
+    chapterIndex: chapter.orderIndex ?? 1,
+    thumbnail: buildVideoThumbnailUrl(video.bunnyVideoId),
+    thumbnailUrl: buildVideoThumbnailUrl(video.bunnyVideoId),
+    priceInPaise: chapter.priceInPaise,
+    price: chapter.priceInPaise ? rupees(chapter.priceInPaise) : undefined,
+    isPreview: Boolean(video.isPreview),
+    isLocked: !video.isPreview && !hasAccess,
+  }));
+};
 
 const serializeCourse = (course, hasAccess = false) => ({
   ...course,
@@ -92,7 +94,11 @@ const serializeCourse = (course, hasAccess = false) => ({
     students: course.studentsLabel,
   },
   ownsCourse: hasAccess,
-  lessons: course.lessons.map((lesson) => serializeLesson(lesson, hasAccess)),
+  // Field name kept as `lessons` for frontend compatibility (nothing on the
+  // website reads this key directly outside of buildCatalog below, but
+  // keeping it avoids touching every consumer for a rename with no
+  // functional benefit) — the items themselves are chapter-video-sourced.
+  lessons: course.chapters.flatMap((chapter) => serializeChapterVideos(course, chapter, hasAccess)),
 });
 
 const listPublishedCourses = () =>
@@ -223,6 +229,17 @@ const buildCatalog = async (userId) => {
   };
 };
 
+// Legacy — the website no longer calls this (VideoCard.jsx now calls
+// getChapterVideoPlayback below, matching the Chapter-based catalog).
+// Retained, not removed, because: (1) the Lesson table itself still exists
+// and is not being dropped, so its data should stay queryable through the
+// same access-control path it always used; (2) migration 0007 backfills a
+// Lesson's real video into a Chapter, not the other way — a Lesson row can
+// keep existing (e.g. as a historical record) independent of the Chapter
+// copy of its video; (3) removing this outright, versus just no longer
+// calling it from the frontend, isn't necessary to satisfy "consistent
+// hierarchy on the website" and carries needless risk of breaking something
+// that isn't visible from a code search (e.g. an external integration).
 const getLessonPlayback = async ({ lessonId, userId }) => {
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
@@ -253,6 +270,41 @@ const getLessonPlayback = async ({ lessonId, userId }) => {
     isPreview: lesson.isPreview,
     videoId: playback.videoId,
     embedUrl: playback.embedUrl,
+  };
+};
+
+// Current playback path: a video lives inside Chapter.videosJson, gated by
+// the chapter's course the same way lesson playback always was.
+const getChapterVideoPlayback = async ({ chapterId, videoId, userId }) => {
+  const chapter = await prisma.chapter.findUnique({ where: { id: chapterId } });
+  if (!chapter) throw new AppError(404, "Chapter not found");
+
+  const videos = Array.isArray(chapter.videosJson) ? chapter.videosJson : [];
+  const video = videos.find((v) => v.id === videoId);
+  if (!video) throw new AppError(404, "Video not found");
+
+  const hasAccess = video.isPreview
+    ? true
+    : chapter.courseId
+      ? await userHasCourseAccess({ userId, courseId: chapter.courseId })
+      : false;
+
+  if (!hasAccess) {
+    throw new AppError(403, "Purchase required to access this video");
+  }
+
+  const embedUrl = buildBunnyEmbedUrl({ bunnyEmbedUrl: video.embedUrl, bunnyVideoId: video.bunnyVideoId });
+  if (!embedUrl) {
+    throw new AppError(422, "Video does not have playable Bunny Stream metadata configured");
+  }
+
+  return {
+    chapterId: chapter.id,
+    courseId: chapter.courseId,
+    videoId: video.id,
+    title: video.title || chapter.title,
+    isPreview: Boolean(video.isPreview),
+    embedUrl,
   };
 };
 
@@ -301,6 +353,7 @@ module.exports = {
   listPublishedCourses,
   getPublishedCourseBySlug,
   getLessonPlayback,
+  getChapterVideoPlayback,
   getChapterMaterials,
   buildCatalog,
 };

@@ -4,6 +4,7 @@ const {
   listPublishedCourses,
   getPublishedCourseBySlug,
   getLessonPlayback,
+  getChapterVideoPlayback,
   getChapterMaterials,
   buildCatalog,
 } = require("../services/course.service");
@@ -62,6 +63,18 @@ const getChapterMaterialsDetails = asyncHandler(async (req, res) => {
   res.json({ success: true, ...data });
 });
 
+// Current playback path — VideoCard.jsx calls this now, replacing the old
+// per-Lesson playback route (still present, see getLessonPlaybackDetails).
+const getChapterVideoPlaybackDetails = asyncHandler(async (req, res) => {
+  if (!req.user) throw new AppError(401, "Authentication required");
+  const playback = await getChapterVideoPlayback({
+    chapterId: req.params.chapterId,
+    videoId: req.params.videoId,
+    userId: req.user.id,
+  });
+  res.json({ success: true, playback });
+});
+
 module.exports = {
   listCourses,
   getCatalog,
@@ -69,4 +82,5 @@ module.exports = {
   getLessonAccess,
   getLessonPlaybackDetails,
   getChapterMaterialsDetails,
+  getChapterVideoPlaybackDetails,
 };
