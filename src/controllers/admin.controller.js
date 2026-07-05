@@ -232,6 +232,29 @@ const deleteCourse = asyncHandler(async (req, res) => {
   const existing = await prisma.course.findUnique({ where: { id: req.params.courseId } });
   if (!existing) throw new AppError(404, "Course not found");
 
+  const [chapterCount, orderCount] = await Promise.all([
+    prisma.chapter.count({ where: { courseId: existing.id } }),
+    prisma.order.count({ where: { courseId: existing.id } }),
+  ]);
+
+  // Chapter.course is onDelete: SetNull — deleting the course wouldn't fail,
+  // it would silently orphan the chapters (courseId -> null, content stays
+  // but becomes permanently inaccessible to students, since access checks
+  // require a courseId). Block instead of letting that happen quietly.
+  if (chapterCount > 0) {
+    throw new AppError(
+      409,
+      `This course cannot be deleted while ${chapterCount} chapter${chapterCount === 1 ? "" : "s"} are still attached. Delete or move its chapters first.`,
+    );
+  }
+
+  // Order.course is onDelete: Restrict — the DB would already reject this,
+  // but checking first gives a real message instead of the generic
+  // "Invalid request data" the Prisma-error catch-all produces.
+  if (orderCount > 0) {
+    throw new AppError(409, "This course has existing orders and cannot be deleted.");
+  }
+
   await prisma.course.delete({ where: { id: req.params.courseId } });
   res.json({ success: true, message: "Course deleted" });
 });
@@ -288,6 +311,28 @@ const deleteClass = asyncHandler(async (req, res) => {
   const existing = await prisma.classLevel.findUnique({ where: { id: req.params.classId } });
   if (!existing) throw new AppError(404, "Class not found");
 
+  // classLabel on Course/Subject/Chapter is a matched string, not a real FK —
+  // deleting the ClassLevel row would succeed silently either way, leaving
+  // those records pointing at a class name that no longer exists anywhere.
+  // Block instead, the same way a real FK constraint would.
+  const [courseCount, subjectCount, chapterCount] = await Promise.all([
+    prisma.course.count({ where: { classLabel: existing.name } }),
+    prisma.subject.count({ where: { classLabel: existing.name } }),
+    prisma.chapter.count({ where: { classLabel: existing.name } }),
+  ]);
+  const total = courseCount + subjectCount + chapterCount;
+
+  if (total > 0) {
+    const parts = [];
+    if (courseCount) parts.push(`${courseCount} course${courseCount === 1 ? "" : "s"}`);
+    if (subjectCount) parts.push(`${subjectCount} subject${subjectCount === 1 ? "" : "s"}`);
+    if (chapterCount) parts.push(`${chapterCount} chapter${chapterCount === 1 ? "" : "s"}`);
+    throw new AppError(
+      409,
+      `This class is still used by ${parts.join(", ")}. Reassign or delete those first.`,
+    );
+  }
+
   await prisma.classLevel.delete({ where: { id: existing.id } });
   res.json({ success: true, message: "Class deleted" });
 });
@@ -331,6 +376,24 @@ const updateSubject = asyncHandler(async (req, res) => {
 const deleteSubject = asyncHandler(async (req, res) => {
   const existing = await prisma.subject.findUnique({ where: { id: req.params.subjectId } });
   if (!existing) throw new AppError(404, "Subject not found");
+
+  // subject on Course/Chapter is a matched string, not a real FK — same
+  // reasoning as deleteClass above.
+  const [courseCount, chapterCount] = await Promise.all([
+    prisma.course.count({ where: { subject: existing.name } }),
+    prisma.chapter.count({ where: { subject: existing.name } }),
+  ]);
+  const total = courseCount + chapterCount;
+
+  if (total > 0) {
+    const parts = [];
+    if (courseCount) parts.push(`${courseCount} course${courseCount === 1 ? "" : "s"}`);
+    if (chapterCount) parts.push(`${chapterCount} chapter${chapterCount === 1 ? "" : "s"}`);
+    throw new AppError(
+      409,
+      `This subject is still used by ${parts.join(", ")}. Reassign or delete those first.`,
+    );
+  }
 
   await prisma.subject.delete({ where: { id: existing.id } });
   res.json({ success: true, message: "Subject deleted" });
